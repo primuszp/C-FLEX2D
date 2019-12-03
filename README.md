@@ -1,5 +1,5 @@
 # C-FLEX2D
-2D Axisymmetric Finite Element Methods (FEM) Program for Flexible Pavement Analysis.
+2D Axisymmetric Finite Element Methods (FEM) Program for Flexible Pavement Analysis, developed for the [Department of Defense (DoD)](https://www.defense.gov).
 
 The program is developed by Haohang Huang and Jiayi Luo @ University of Illinois at Urbana-Champaign (UIUC). The advisor is [Professor Erol Tutumluer](https://cee.illinois.edu/directory/profile/tutumlue).
 
