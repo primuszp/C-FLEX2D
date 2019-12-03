@@ -190,9 +190,12 @@ auto start = std::chrono::high_resolution_clock::now();
 
     // batch mode (argv[1:end] contains input file names)
    for (int i = 1; i < argc; i++) {
-       std::string inFileName(argv[i]);
-       std::string outVTKName(argv[i]);
-       outVTKName.replace(outVTKName.begin()+outVTKName.rfind('.')+1, outVTKName.end(), "vtk");
+	   std::string inFile(argv[i]);
+	   std::string inFileName = inFile + ".txt";
+	   std::string outVTKName = inFile + ".vtk";
+	   // std::string inFileName(argv[i]);
+       // std::string outVTKName(argv[i]);
+       // outVTKName.replace(outVTKName.begin()+outVTKName.rfind('.')+1, outVTKName.end(), "vtk");
 
        Mesh mesh = Mesh(inFileName); // on stack, make sure lifetime of 'mesh' is longer than Analysis case
        Analysis* caseType; // 'case' is a reserved keyword for switch()
