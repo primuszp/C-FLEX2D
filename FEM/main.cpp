@@ -199,10 +199,14 @@ auto start = std::chrono::high_resolution_clock::now();
 
        Mesh mesh = Mesh(inFileName); // on stack, make sure lifetime of 'mesh' is longer than Analysis case
        Analysis* caseType; // 'case' is a reserved keyword for switch()
-       if (mesh.nonlinear)
-           caseType = new Nonlinear(mesh);
-       else
-           caseType = new Linear(mesh);
+	   if (mesh.nonlinear) {
+		   std::cout << "> Nonlinear analysis scheme" << std::endl;
+		   caseType = new Nonlinear(mesh);
+	   }
+	   else {
+		   std::cout << "> Linear analysis scheme" << std::endl;
+		   caseType = new Linear(mesh);
+	   }
 
        caseType->solve();
        // caseType->printDisp();

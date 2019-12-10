@@ -321,7 +321,7 @@ bool Nonlinear::nonlinearIteration(double damping)
                         convergence = false;
                         // should I just return false? No. Because you want to update all elements' modulus synchronously
                     // Criteraia 2: Accumulative modulus error within 0.2%
-                    if (g == 4/*true*/) { // less strict convergence criteria
+                    if (g == 4 /*true*/) { // less strict convergence criteria
                         sumError += error * error;
                         sumModulus += modulus_old * modulus_old; // tutu uses modulus_old, but I want to use modulus
                     }

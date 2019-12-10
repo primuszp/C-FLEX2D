@@ -64,7 +64,7 @@ void Mesh::readFromFile(std::string const & fileName)
     // Read the first line of the file as mesh summary info including:
     // Total number of nodes
     // Total number of elements
-    // Total number of different types of material property the elements should be assigned to
+    // Total number of different types of material property the elements should be assigned to (i.e. No. of layers)
     // Total number of point loads in X-direction
     // Total number of point loads in Y-direction
     // Total number of edge loads
@@ -101,7 +101,7 @@ void Mesh::readFromFile(std::string const & fileName)
     for (int i = 0; i < elementProperties; i++) {
         std::getline(file, readLine);
         std::vector<int> range;
-        parseLine(readLine, range); // range will store 0 4 1 0 0
+        parseLine(readLine, range); // 'range' -> '0 4 1 0 0'
         layerMap[range[0]] = i; // record the lower bound of the range
         std::getline(file, readLine);
         parseLine(readLine, elementProperty);
@@ -111,7 +111,7 @@ void Mesh::readFromFile(std::string const & fileName)
             nonlinear = true;
             // for nonlinear layer it should read two more lines about the material model parameters
             std::getline(file, readLine);
-            int model = std::stoi(readLine, NULL); // [K-theta:1 Uzan:2 UT-Austin:3 MEPDG:4]
+            int model = std::stoi(readLine, NULL); // [K-theta:1;Uzan:2;Universal:3;MEPDG:4;Bilinear:5]
             std::getline(file, readLine);
             std::vector<double> parameters;
             parseLine(readLine, parameters);
@@ -121,7 +121,7 @@ void Mesh::readFromFile(std::string const & fileName)
     }
     std::vector<double>().swap(elementProperty);
 
-    // Read nonlinear iteration parameters (No. of load increments, damping ratios) if there are at least one nonlinear material
+    // Read nonlinear iteration parameters after all material lines (No. of load increments, damping ratios) if there are at least one nonlinear material
     if (nonlinear) {
         std::getline(file, readLine);
         parseLine(readLine, iterations); // vector "iterations" declared as a member variable of Mesh class, to be used in Nonlinear class

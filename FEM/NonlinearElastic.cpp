@@ -97,7 +97,8 @@ VectorXd NonlinearElastic::stressDependentModulus(const VectorXd & stress) const
             }
             break;
         case 3 :
-            // Pezo (1993) UT-Austin model
+            /*
+            // Pezo (1993) UT-Austin model (deprecated)
             // M = k1 * sigma_d^k2 * sigma_3^k3
             if (!anisotropy) {
                 Mz = coeff[0] * std::pow(deviator, coeff[1]) * std::pow(std::abs(stress(0)), coeff[2]);
@@ -105,6 +106,17 @@ VectorXd NonlinearElastic::stressDependentModulus(const VectorXd & stress) const
                 Mr = coeff[0] * std::pow(deviator, coeff[1]) * std::pow(std::abs(stress(0)), coeff[2]);
                 Mz = coeff[3] * std::pow(deviator, coeff[4]) * std::pow(std::abs(stress(0)), coeff[5]);
                 G = coeff[6] * std::pow(deviator, coeff[7]) * std::pow(std::abs(stress(0)), coeff[8]);
+            }
+            break;
+            */
+            // Witczak and Uzan (1988) Universal model
+            // M = k1 * p_a * (theta/p_a)^k2 * (tau_oct/p_a)^k3
+            if (!anisotropy) {
+                Mz = coeff[0] * atm * std::pow(bulk/atm, coeff[1]) * std::pow(octahedral/atm, coeff[2]);
+            } else {
+                Mr = coeff[0] * atm * std::pow(bulk/atm, coeff[1]) * std::pow(octahedral/atm, coeff[2]);
+                Mz = coeff[3] * atm * std::pow(bulk/atm, coeff[4]) * std::pow(octahedral/atm, coeff[5]);
+                G = coeff[6] * atm * std::pow(bulk/atm, coeff[7]) * std::pow(octahedral/atm, coeff[8]);
             }
             break;
         case 4 :
@@ -116,6 +128,22 @@ VectorXd NonlinearElastic::stressDependentModulus(const VectorXd & stress) const
                 Mr = coeff[0] * atm * std::pow(bulk/atm, coeff[1]) * std::pow(octahedral/atm + 1, coeff[2]);
                 Mz = coeff[3] * atm * std::pow(bulk/atm, coeff[4]) * std::pow(octahedral/atm + 1, coeff[5]);
                 G = coeff[6] * atm * std::pow(bulk/atm, coeff[7]) * std::pow(octahedral/atm + 1, coeff[8]);
+            }
+            break;
+        case 5 :
+            // Thompson and Robnett (1979) Bilinear model (subgrade)
+            // M = k1 - k * (sigma_d - k2)
+            // k = k3 when sigma_d <= k2, k = k4 when sigma_d >= k2
+            if (!anisotropy) {
+                double k = deviator < coeff[1] ? coeff[2] : coeff[3];
+                Mz = coeff[0] - k * (deviator - coeff[1]);
+            } else {
+                double kr = deviator < coeff[1] ? coeff[2] : coeff[3];
+                double kz = deviator < coeff[5] ? coeff[6] : coeff[7];
+                double kg = deviator < coeff[9] ? coeff[10] : coeff[11];
+                Mr = coeff[0] - kr * (deviator - coeff[1]);
+                Mz = coeff[4] - kz * (deviator - coeff[5]);
+                G = coeff[8] - kg * (deviator - coeff[9]);
             }
             break;
     }
