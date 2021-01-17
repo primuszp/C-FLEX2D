@@ -17,14 +17,13 @@
 
 #include "Node.h"
 #include "Shape.h"
-#include "Material.h"
-#include "ShapeQ4.h"
-#include "ShapeT6.h"
+#include "ShapeB3.h"
 #include "ShapeQ8.h"
+#include "Material.h"
 
 /* Abstract base Element class with shared public methods and pure virtual methods.
  *
- * For polymorphism of a combination of different element types (e.g., T3, Q6, Q8), we
+ * For polymorphism of a combination of different element types (e.g., B3, I6, Q8), we
  * create a base class with virtual methods and enable different implementation
  * using C++ inheritance feature. Methods can be accessed using a generic
  * pointer Element*.
@@ -118,8 +117,9 @@ class Element
          * it will just use the constant E; for nonlinear elastic, it will compute
          * E matrix based on specific modulus.
          * @return The 4-by-4 E matrix.
+         * @note with bar element and interface element, the E Matrix should be dynamic sized, i.e. it could be 2-by-2, etc. So here we made it a pure virtual method.
          */
-        MatrixXd EMatrix(const VectorXd & modulus) const;
+        virtual MatrixXd EMatrix(const VectorXd & modulus) const = 0;
 
         /**
          * Get the body force (unit weight) of the element.
@@ -167,8 +167,9 @@ class Element
          * @param point The point where the B matrix to be evaluated.
          * @return The 4-by-2n B matrix where n is the number of nodes belong to
          * this element.
+         * @note with bar element and interface element, the B Matrix should be dynamic sized, i.e. it could be 2-by-2n, etc. So here we made it a pure virtual method.
          */
-        MatrixXd BMatrix(const Vector2d & point) const;
+        virtual MatrixXd BMatrix(const Vector2d & point) const = 0;
 
         /** A g-by-1 vector (isotropic) or g-by-3 matrix (anisotropic), where g is the number of Gaussian points of this element */
         MatrixXd modulusAtGaussPt; // for nonlinear analysis, made public for easier access
@@ -186,6 +187,7 @@ class Element
          * scheme.
          */
         void computerForce();
+
         /**
          * Helper function for the computation of compensated tension force.
          *
@@ -286,11 +288,9 @@ class Element
                   // Create instances of different types of shape
                   switch (nodes) {
                       case 3 :
-                          shape = new ShapeQ8(nodes, gaussians, edges, edgeNodes, edgeGaussians); // @TODO change to Q3 later
+                          shape = new ShapeB3(nodes, gaussians, edges, edgeNodes, edgeGaussians);
                           break;
-                      case 6 :
-                          shape = new ShapeQ8(nodes, gaussians, edges, edgeNodes, edgeGaussians); // @TODO change to Q6 later
-                          break;
+                      // 6-noded interface element has no shape function (no integration involved)
                       case 8 :
                           shape = new ShapeQ8(nodes, gaussians, edges, edgeNodes, edgeGaussians);
                           break;
@@ -332,7 +332,7 @@ class Element
          * the list of all material is maintained at the Mesh level, so the
          * memory allocation and deallocation is not handled inside Element. */
         Material* material_;
-        
+
         /**
          * Private helper function for computing the B matrix (the strain-displacement
          * transformation matrix, e = D * u = D * N * u = B * u) at ith Gaussian point.
@@ -340,7 +340,7 @@ class Element
          * @param i The Gaussian point where the B matrix to be evaluated.
          * @return The B matrix.
          */
-        MatrixXd _BMatrix(const int & i) const;
+        virtual MatrixXd _BMatrix(const int & i) const = 0;
 
         /**
          * Private helper function for computing the determinant of Jacobian
@@ -348,8 +348,9 @@ class Element
          *
          * @param i The Gaussian point where the Jacobian matrix to be evaluated.
          * @return The determinant of Jacobian matrix.
+         * @note for membrane element, |J| = L/2, so this is made a virtual method
          */
-        double _jacobianDet(const int & i) const;
+        virtual double _jacobianDet(const int & i) const;
 
         /**
          * Private helper function for computing the averaged radius R at ith Gaussian point.

@@ -64,13 +64,13 @@ const VectorXd & Element::nodalForce() const
     return nodalForce_;
 }
 
-MatrixXd Element::EMatrix(const VectorXd & modulus) const
-{
-    if (!material_->nonlinearity)
-        return material_->EMatrix();
-    else
-        return material_->EMatrix(modulus);
-}
+// MatrixXd Element::EMatrix(const VectorXd & modulus) const
+// {
+//     if (!material_->nonlinearity)
+//         return material_->EMatrix();
+//     else
+//         return material_->EMatrix(modulus);
+// }
 
 const Vector2d & Element::bodyForce() const
 {
@@ -92,22 +92,22 @@ double Element::radius(const Vector2d & point) const
     return shape()->functionVec(point).transpose() * nodeCoord_.col(0);
 }
 
-MatrixXd Element::BMatrix(const Vector2d & point) const
-{
-    MatrixXd B = MatrixXd::Zero(4, 2 * size_);
-    MatrixXd globalDeriv = (shape()->functionDeriv(point) * nodeCoord_).inverse() * shape()->functionDeriv(point);
+// MatrixXd Element::BMatrix(const Vector2d & point) const
+// {
+//     MatrixXd B = MatrixXd::Zero(4, 2 * size_);
+//     MatrixXd globalDeriv = (shape()->functionDeriv(point) * nodeCoord_).inverse() * shape()->functionDeriv(point);
 
-    for (int n = 0; n < size_; n++) {
-        B(0, 2 * n) = globalDeriv(0, n);
-        VectorXd N = shape()->functionVec(point);
-        B(1, 2 * n) = N(n) / radius(point);
-        B(2, 2 * n + 1) = globalDeriv(1, n);
-        B(3, 2 * n) = globalDeriv(1, n);
-        B(3, 2 * n + 1) = globalDeriv(0, n);
-    }
+//     for (int n = 0; n < size_; n++) {
+//         B(0, 2 * n) = globalDeriv(0, n);
+//         VectorXd N = shape()->functionVec(point);
+//         B(1, 2 * n) = N(n) / radius(point);
+//         B(2, 2 * n + 1) = globalDeriv(1, n);
+//         B(3, 2 * n) = globalDeriv(1, n);
+//         B(3, 2 * n + 1) = globalDeriv(0, n);
+//     }
 
-    return B;
-}
+//     return B;
+// }
 
 void Element::computeStiffnessAndForce()
 {
@@ -118,23 +118,30 @@ void Element::computeStiffnessAndForce()
     // but not for nonlinear analysis which requires updating these variables every time.
     localStiffness_ = MatrixXd::Zero(2 * size_, 2 * size_);
     nodalForce_ = VectorXd::Zero(2 * size_);
-    for (int i = 0; i < shape()->gaussianPt().size(); i++) {
-        // Local stiffness matrix
-        // sum 2PI * B^T * E * B * |J| * r * W(i) at all Gaussian points
-        localStiffness_ += 2 * M_PI * _BMatrix(i).transpose() * EMatrix(modulusAtGaussPt.row(i)) * _BMatrix(i) * _jacobianDet(i) * _radius(i) * shape()->gaussianWt(i);
-        // if (i == 4) {
-        //     std::cout << "Modulus Debug: " << modulusAtGaussPt.row(i) << std::endl;
-        //     std::cout << "E Debug: " << EMatrix(modulusAtGaussPt.row(i)) << std::endl;
-        // }
-        // Body force
-        // sum 2PI * N^T * F * |J| * r * W(i) at all Gaussian points
-        nodalForce_ += 2 * M_PI * shape()->functionMat(i).transpose() * bodyForce() * _jacobianDet(i) * _radius(i) * shape()->gaussianWt(i);
 
-        // Temperature load
-        // sum 2PI * B^T * E * e0 * |J| * r * W(i) at all Gaussian points
-        nodalForce_ += 2 * M_PI * _BMatrix(i).transpose() * EMatrix(modulusAtGaussPt.row(i)) * thermalStrain() * _jacobianDet(i) * _radius(i) * shape()->gaussianWt(i);
+    if (material_->geosynthetic && size_ == 6)
+    {   // geosynthetic interface element is different (no integration involved)
+        localStiffness_ = BMatrix(Vector2d::Zero()).transpose() * EMatrix(Vector2d::Zero()) * BMatrix(Vector2d::Zero());
     }
+    else 
+    {   // other types of element needs integration to form local stiffness matrix
+        for (int i = 0; i < shape()->gaussianPt().size(); i++) {
+            // Local stiffness matrix
+            // sum 2PI * B^T * E * B * |J| * r * W(i) at all Gaussian points
+            localStiffness_ += 2 * M_PI * _BMatrix(i).transpose() * EMatrix(modulusAtGaussPt.row(i)) * _BMatrix(i) * _jacobianDet(i) * _radius(i) * shape()->gaussianWt(i);
+            // if (i == 4) {
+            //     std::cout << "Modulus Debug: " << modulusAtGaussPt.row(i) << std::endl;
+            //     std::cout << "E Debug: " << EMatrix(modulusAtGaussPt.row(i)) << std::endl;
+            // }
+            // Body force
+            // sum 2PI * N^T * F * |J| * r * W(i) at all Gaussian points
+            nodalForce_ += 2 * M_PI * shape()->functionMat(i).transpose() * bodyForce() * _jacobianDet(i) * _radius(i) * shape()->gaussianWt(i);
 
+            // Temperature load
+            // sum 2PI * B^T * E * e0 * |J| * r * W(i) at all Gaussian points
+            nodalForce_ += 2 * M_PI * _BMatrix(i).transpose() * EMatrix(modulusAtGaussPt.row(i)) * thermalStrain() * _jacobianDet(i) * _radius(i) * shape()->gaussianWt(i);
+        }
+    }
 }
 
 void Element::computerForce()
@@ -180,31 +187,31 @@ const MatrixXd & Element::getNodeCoord() const
     return nodeCoord_;
 }
 
-MatrixXd Element::_BMatrix(const int & i) const
-{
-    // Example dimensions are given for ElementQ8 type
-    MatrixXd B = MatrixXd::Zero(4, 2 * size_); // 4x16, B matrix
-    // [dN1/dr  0      | dN2/dr  0      | ... ]
-    // [N1/r    0      | N2/r    0      | ... ]
-    // [0       dN1/dz | 0       dN2/dz | ... ]
-    // [dN1/dz  dN1/dr | dN2/dz  dN2/dr | ... ]
-    // where dN/dr = J^-1 * dN/dxi, dN/dz = J^-1 * dN/deta
+// MatrixXd Element::_BMatrix(const int & i) const
+// {
+//     // Example dimensions are given for ElementQ8 type
+//     MatrixXd B = MatrixXd::Zero(4, 2 * size_); // 4x16, B matrix
+//     // [dN1/dr  0      | dN2/dr  0      | ... ]
+//     // [N1/r    0      | N2/r    0      | ... ]
+//     // [0       dN1/dz | 0       dN2/dz | ... ]
+//     // [dN1/dz  dN1/dr | dN2/dz  dN2/dr | ... ]
+//     // where dN/dr = J^-1 * dN/dxi, dN/dz = J^-1 * dN/deta
 
-    // 2x8 global derivatives [dN/dr; dN/dz] = 2x2 inversed Jacobian [J^-1] * 2x8 local derivatives [dN/dxi; dN/deta]
-    // where 2x2 inversed Jacobian = 2x8 local derivatives [dN/dxi; dN/deta] * 8x2 node coordinates [ri zi]
-    MatrixXd globalDeriv = (shape()->functionDeriv(i) * nodeCoord_).inverse() * shape()->functionDeriv(i);
+//     // 2x8 global derivatives [dN/dr; dN/dz] = 2x2 inversed Jacobian [J^-1] * 2x8 local derivatives [dN/dxi; dN/deta]
+//     // where 2x2 inversed Jacobian = 2x8 local derivatives [dN/dxi; dN/deta] * 8x2 node coordinates [ri zi]
+//     MatrixXd globalDeriv = (shape()->functionDeriv(i) * nodeCoord_).inverse() * shape()->functionDeriv(i);
 
-    for (int n = 0; n < size_; n++) {
-        B(0, 2 * n) = globalDeriv(0, n); // dNi/dr
-        const VectorXd & N = shape()->functionVec(i);
-        B(1, 2 * n) = N(n) / _radius(i); // Ni/r // (shape()->functionVec(i))(n);
-        B(2, 2 * n + 1) = globalDeriv(1, n); // dNi/dz
-        B(3, 2 * n) = globalDeriv(1, n); // dNi/dz
-        B(3, 2 * n + 1) = globalDeriv(0, n); // dNi/dr
-    }
+//     for (int n = 0; n < size_; n++) {
+//         B(0, 2 * n) = globalDeriv(0, n); // dNi/dr
+//         const VectorXd & N = shape()->functionVec(i);
+//         B(1, 2 * n) = N(n) / _radius(i); // Ni/r // (shape()->functionVec(i))(n);
+//         B(2, 2 * n + 1) = globalDeriv(1, n); // dNi/dz
+//         B(3, 2 * n) = globalDeriv(1, n); // dNi/dz
+//         B(3, 2 * n + 1) = globalDeriv(0, n); // dNi/dr
+//     }
 
-    return B;
-}
+//     return B;
+// }
 
 double Element::_jacobianDet(const int & i) const
 {

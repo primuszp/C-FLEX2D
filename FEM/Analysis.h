@@ -137,11 +137,20 @@ class Analysis
         /** The nodal force 2n-by-1 vector */
         VectorXd nodalForce;
 
-        /** The nodal strain n-by-4 matrix */
+        /** The nodal strain n-by-4 matrix (for Q8 element) */
         MatrixXd nodalStrain;
 
-        /** The nodal strain n-by-4 matrix */
+        /** The nodal stress n-by-4 matrix (for Q8 element) */
         MatrixXd nodalStress;
+
+        /** The nodal membrane strain n-by-2 matrix (for B3 element) */
+        MatrixXd nodalMembraneStrain;
+
+        /** The nodal membrane stress n-by-2 matrix (for B3 element) */
+        MatrixXd nodalMembraneStress;
+
+        /** The nodal shear/normal stress n-by-2 matrix (for I6 element) */
+        MatrixXd nodalInterfaceStress;
 };
 
 #endif /* Analysis_h */

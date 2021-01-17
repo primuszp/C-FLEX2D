@@ -15,7 +15,7 @@ class ViscoElastic : public Material
 {
   public:
     /** See the documentation of base class Material. */
-    ViscoElastic(const bool & anisotropy, const bool & nonlinearity, const bool & noTension, const std::vector<double> & properties);
+    ViscoElastic(const bool & anisotropy, const bool & nonlinearity, const bool & noTension, const bool & geosynthetic, const std::vector<double> & properties);
     ~ViscoElastic();
 };
 

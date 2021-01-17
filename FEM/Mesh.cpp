@@ -4,15 +4,15 @@
  *
  * @author Haohang Huang
  * @date Feburary 5, 2018
- * @todo line 95, 98, change to T3, Q6 element later.
  */
 
 #include "Mesh.h"
-#include "ElementQ4.h"
-#include "ElementT6.h"
+#include "ElementB3.h"
+#include "ElementI6.h"
 #include "ElementQ8.h"
 #include "LinearElastic.h"
 #include "NonlinearElastic.h"
+#include "Geosynthetic.h"
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -101,23 +101,37 @@ void Mesh::readFromFile(std::string const & fileName)
     for (int i = 0; i < elementProperties; i++) {
         std::getline(file, readLine);
         std::vector<int> range;
-        parseLine(readLine, range); // 'range' -> '0 4 1 0 0'
+        parseLine(readLine, range); // 'range' -> '0 4 1 0 0 0'
+        // range[0]: starting element ID
+        // range[1]: ending element ID
+        // range[2]: 0 if isotropic, 1 if cross-anisotropic
+        // range[3]: 0 if linear elastic, 1 if nonlinear elastic
+        // range[4]:  0 if normal material, 1 if no-tension material
+        // range[5]: 0 if normal material, 1 if geosynthetic material
         layerMap[range[0]] = i; // record the lower bound of the range
         std::getline(file, readLine);
         parseLine(readLine, elementProperty);
-        if (range[3] == 0) // linear elastic
-            materialList.push_back(new LinearElastic(range[2], range[3], range[4], elementProperty)); // dynamically allocated, remember to delete in destructor!
-        else { // nonlinear elastic
-            nonlinear = true;
-            // for nonlinear layer it should read two more lines about the material model parameters
-            std::getline(file, readLine);
-            int model = std::stoi(readLine, NULL); // [K-theta:1;Uzan:2;Universal:3;MEPDG:4;Bilinear:5]
-            std::getline(file, readLine);
-            std::vector<double> parameters;
-            parseLine(readLine, parameters);
-            materialList.push_back(new NonlinearElastic(range[2], range[3], range[4], elementProperty, model, parameters));
+        if (range[5] == 0)
+        {   // non-geosynthetic layer
+            if (range[3] == 0) // linear elastic
+                materialList.push_back(new LinearElastic(range[2], range[3], range[4], range[5], elementProperty)); // dynamically allocated, remember to delete in destructor!
+            else { // nonlinear elastic
+                nonlinear = true;
+                // for nonlinear layer it should read two more lines about the material model parameters
+                std::getline(file, readLine);
+                int model = std::stoi(readLine, NULL); // [K-theta:1;Uzan:2;Universal:3;MEPDG:4;Bilinear:5]
+                std::getline(file, readLine);
+                std::vector<double> parameters;
+                parseLine(readLine, parameters);
+                materialList.push_back(new NonlinearElastic(range[2], range[3], range[4], range[5], elementProperty, model, parameters));
+            }
         }
-        // 0 if isotropic, 1 if cross-anisotropic; 0 if linear elastic, 1 if nonlinear elastic; 0 if normal material, 1 if no-tension material.
+        else 
+        {   // geosynthetic material
+            materialList.push_back(new Geosynthetic(range[2], range[3], range[4], range[5], elementProperty)); 
+        }
+        
+        
     }
     std::vector<double>().swap(elementProperty);
 
@@ -224,10 +238,10 @@ void Mesh::readFromFile(std::string const & fileName)
         // Create instances of different types of element
         switch (size) {
             case 3 :
-                meshElement_[i] = new ElementQ8(i, elementNodeList, meshNode_, material); // @TODO change to Q3 later
+                meshElement_[i] = new ElementB3(i, elementNodeList, meshNode_, material); 
                 break;
             case 6 :
-                meshElement_[i] = new ElementQ8(i, elementNodeList, meshNode_, material); // @TODO change to Q6 later
+                meshElement_[i] = new ElementI6(i, elementNodeList, meshNode_, material); 
                 break;
             case 8 :
                 meshElement_[i] = new ElementQ8(i, elementNodeList, meshNode_, material);

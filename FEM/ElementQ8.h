@@ -28,6 +28,10 @@ class ElementQ8 : public Element
 
         Shape* shape() const;
 
+        MatrixXd EMatrix(const VectorXd & modulus) const;
+        MatrixXd BMatrix(const Vector2d & point) const;
+        MatrixXd _BMatrix(const int & i) const;
+
     private:
         /** A static structure that manages all the static members used in this class */
         static staticMembers statics;

@@ -16,7 +16,7 @@ class NonlinearElastic : public Material
 {
   public:
     /** See the documentation of base class Material. */
-    NonlinearElastic(const bool & anisotropy, const bool & nonlinearity, const bool & noTension, const std::vector<double> & properties, const int & model, const std::vector<double> & parameters);
+    NonlinearElastic(const bool & anisotropy, const bool & nonlinearity, const bool & noTension, const bool & geosynthetic, const std::vector<double> & properties, const int & model, const std::vector<double> & parameters);
     ~NonlinearElastic();
 
     VectorXd stressDependentModulus(const VectorXd & stress) const;

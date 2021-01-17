@@ -22,7 +22,9 @@ Analysis::Analysis(Mesh & meshInfo)
   :
   mesh(meshInfo), globalStiffness(2 * mesh.nodeCount(), 2 * mesh.nodeCount()),
   nodalDisp(VectorXd::Zero(2 * mesh.nodeCount())), nodalForce(VectorXd::Zero(2 * mesh.nodeCount())),
-  nodalStrain(MatrixXd::Zero(mesh.nodeCount(), 4)), nodalStress(MatrixXd::Zero(mesh.nodeCount(), 4))
+  nodalStrain(MatrixXd::Zero(mesh.nodeCount(), 4)), nodalStress(MatrixXd::Zero(mesh.nodeCount(), 4)),
+  nodalMembraneStrain(MatrixXd::Zero(mesh.nodeCount(), 2)), nodalMembraneStress(MatrixXd::Zero(mesh.nodeCount(), 2)),
+  nodalInterfaceStress(MatrixXd::Zero(mesh.nodeCount(), 2))
 {
 }
 
@@ -308,8 +310,6 @@ void Analysis::computeStrainAndStress()
         curr = mesh.elementArray()[i];
         const VectorXi & nodeList = curr->getNodeList();
         numNodes = curr->getSize();
-        numGaussianPt = (int)curr->shape()->gaussianPt().size();
-
 
         // Assemble the nodal displacement vector for an element (directly from the solved displacement vector)
         VectorXd nodeDisp(2 * numNodes);
@@ -318,45 +318,108 @@ void Analysis::computeStrainAndStress()
             nodeDisp(2 * j + 1) = nodalDisp(2 * nodeList(j) + 1);
         }
 
-        MatrixXd strainAtGaussPt(numGaussianPt, 4); // 4 for axisymmetric problem
-        MatrixXd stressAtGaussPt(numGaussianPt, 4);
-        MatrixXd shapeAtGaussPt(numGaussianPt, numNodes); // 9x8 matrix for element Q8
+        if (!curr->material()->geosynthetic)
+        {   // for non-geosynthetic material, i.e., pavement layers with Q8 elements
+            numGaussianPt = (int)curr->shape()->gaussianPt().size();
+            MatrixXd strainAtGaussPt(numGaussianPt, 4); // 4 for axisymmetric problem
+            MatrixXd stressAtGaussPt(numGaussianPt, 4);
+            MatrixXd shapeAtGaussPt(numGaussianPt, numNodes); // 9x8 matrix for element Q8
 
-        // Compute strain and stress at gaussian points from e = Bu, sigma = Ee
-        for (int g = 0; g < numGaussianPt; g++) {
-            MatrixXd B = curr->BMatrix(curr->shape()->gaussianPt(g));
-            VectorXd e = B * nodeDisp; // e = B * u
-            strainAtGaussPt.row(g) = e.transpose();
-            VectorXd modulus = (curr->modulusAtGaussPt).row(g); // for nonlinear, this is the stabilized modulus at the Gaussian point; for linear elastic, it's just the constant modulus M
-            stressAtGaussPt.row(g) = (curr->EMatrix(modulus) * (e - curr->thermalStrain())).transpose(); // subtract thermal strain, stress = E * (strain - thermal strain)
-            shapeAtGaussPt.row(g) = curr->shape()->functionVec(g).transpose();
+            // Compute strain and stress at gaussian points from e = Bu, sigma = Ee
+            for (int g = 0; g < numGaussianPt; g++) {
+                MatrixXd B = curr->BMatrix(curr->shape()->gaussianPt(g));
+                VectorXd e = B * nodeDisp; // e = B * u
+                strainAtGaussPt.row(g) = e.transpose();
+                VectorXd modulus = (curr->modulusAtGaussPt).row(g); // for nonlinear, this is the stabilized modulus at the Gaussian point; for linear elastic, it's just the constant modulus M
+                stressAtGaussPt.row(g) = (curr->EMatrix(modulus) * (e - curr->thermalStrain())).transpose(); // subtract thermal strain, stress = E * (strain - thermal strain)
+                shapeAtGaussPt.row(g) = curr->shape()->functionVec(g).transpose();
+            }
+
+            // Solve/extrapolate for nodal strain value via a least square linear system using pesudo inverse
+            // Previous attempt: solving the system by pesudo inverse, this might have numerical error
+            // MatrixXd pesudo = shapeAtGaussPt.completeOrthogonalDecomposition().pseudoInverse(); // pesudo inverse in "Eigen/QR"
+            // MatrixXd strainAtNodes = pesudo * strainAtGaussPt; // 8x4 matrix
+            // Current solution: use SVD decomposition
+            MatrixXd strainAtNodes = shapeAtGaussPt.bdcSvd(ComputeThinU | ComputeThinV).solve(strainAtGaussPt);
+            MatrixXd stressAtNodes = shapeAtGaussPt.bdcSvd(ComputeThinU | ComputeThinV).solve(stressAtGaussPt);
+
+            // Notes on LLS system:
+            // Several options for solving a linear least squares system:
+            // 1. SVD decomposition
+            // VectorXd x = A.bdcSvd(ComputeThinU | ComputeThinV).solve(b);
+            // 2. QR decomposition
+            // VectorXd x = A.colPivHouseholderQr().solve(b);
+            // from fast to slow, unstable to stable: householderQr()-->colPivHouseholderQr()-->fullPivHouseholderQr()
+            // 3. Normal equations (A^T*A)*x = A^T*b
+            // VectorXd x = (A.transpose() * A).ldlt().solve(A.transpose() * b)
+
+            // Set calculated strain and stress value to every node (to be accumulated at each node and averaged later)
+            for (int n = 0; n < numNodes; n++) {
+                VectorXd strain = strainAtNodes.row(n);
+                VectorXd stress = stressAtNodes.row(n);
+                mesh.nodeArray()[nodeList(n)]->setStrainAndStress(strain, stress);
+            }
         }
+        else
+        {   // for geosynthetic material, i.e. membrane element and interface element. Conditioned on number of nodes
+            if (numNodes == 3)
+            {   // membrane element
+                numGaussianPt = (int)curr->shape()->gaussianPt().size();
+                MatrixXd strainAtGaussPt(numGaussianPt, 2); // 2 for membrane element
+                MatrixXd stressAtGaussPt(numGaussianPt, 2);
+                MatrixXd shapeAtGaussPt(numGaussianPt, numNodes); // 3x3 matrix for element B3
 
-        // Solve/extrapolate for nodal strain value via a least square linear system using pesudo inverse
-        // Previous attempt: solving the system by pesudo inverse, this might have numerical error
-        // MatrixXd pesudo = shapeAtGaussPt.completeOrthogonalDecomposition().pseudoInverse(); // pesudo inverse in "Eigen/QR"
-        // MatrixXd strainAtNodes = pesudo * strainAtGaussPt; // 8x4 matrix
-        // Current solution: use SVD decomposition
-        MatrixXd strainAtNodes = shapeAtGaussPt.bdcSvd(ComputeThinU | ComputeThinV).solve(strainAtGaussPt);
-        MatrixXd stressAtNodes = shapeAtGaussPt.bdcSvd(ComputeThinU | ComputeThinV).solve(stressAtGaussPt);
+                // Compute strain and stress at gaussian points from e = Bu, sigma = Ee
+                for (int g = 0; g < numGaussianPt; g++) {
+                    MatrixXd B = curr->BMatrix(curr->shape()->gaussianPt(g));
+                    VectorXd e = B * nodeDisp; // e = B * u, 2x6 * 6x1 --> 2x1
+                    strainAtGaussPt.row(g) = e.transpose();
+                    VectorXd modulus = (curr->modulusAtGaussPt).row(g); // for nonlinear, this is the stabilized modulus at the Gaussian point; for linear elastic and geosynthetic, it's just the constant modulus M
+                    stressAtGaussPt.row(g) = (curr->EMatrix(modulus) * (e - curr->thermalStrain())).transpose(); // subtract thermal strain, stress = E * (strain - thermal strain)
+                    shapeAtGaussPt.row(g) = curr->shape()->functionVec(g).transpose();
+                }
 
-        // Notes on LLS system:
-        // Several options for solving a linear least squares system:
-        // 1. SVD decomposition
-        // VectorXd x = A.bdcSvd(ComputeThinU | ComputeThinV).solve(b);
-        // 2. QR decomposition
-        // VectorXd x = A.colPivHouseholderQr().solve(b);
-        // from fast to slow, unstable to stable: householderQr()-->colPivHouseholderQr()-->fullPivHouseholderQr()
-        // 3. Normal equations (A^T*A)*x = A^T*b
-        // VectorXd x = (A.transpose() * A).ldlt().solve(A.transpose() * b)
+                // Solve/extrapolate for nodal strain value via a least square linear system using pesudo inverse
+                // Previous attempt: solving the system by pesudo inverse, this might have numerical error
+                // MatrixXd pesudo = shapeAtGaussPt.completeOrthogonalDecomposition().pseudoInverse(); // pesudo inverse in "Eigen/QR"
+                // MatrixXd strainAtNodes = pesudo * strainAtGaussPt; // 3x2 matrix
+                // Current solution: use SVD decomposition
+                MatrixXd strainAtNodes = shapeAtGaussPt.bdcSvd(ComputeThinU | ComputeThinV).solve(strainAtGaussPt);
+                MatrixXd stressAtNodes = shapeAtGaussPt.bdcSvd(ComputeThinU | ComputeThinV).solve(stressAtGaussPt);
 
-        // Set calculated strain and stress value to every node (to be accumulated at each node and averaged later)
-        for (int n = 0; n < numNodes; n++) {
-            VectorXd strain = strainAtNodes.row(n);
-            VectorXd stress = stressAtNodes.row(n);
-            mesh.nodeArray()[nodeList(n)]->setStrainAndStress(strain, stress);
+                // Notes on LLS system:
+                // Several options for solving a linear least squares system:
+                // 1. SVD decomposition
+                // VectorXd x = A.bdcSvd(ComputeThinU | ComputeThinV).solve(b);
+                // 2. QR decomposition
+                // VectorXd x = A.colPivHouseholderQr().solve(b);
+                // from fast to slow, unstable to stable: householderQr()-->colPivHouseholderQr()-->fullPivHouseholderQr()
+                // 3. Normal equations (A^T*A)*x = A^T*b
+                // VectorXd x = (A.transpose() * A).ldlt().solve(A.transpose() * b)
+
+                // Set calculated strain and stress value to every node (to be accumulated at each node and averaged later)
+                for (int n = 0; n < numNodes; n++) {
+                    VectorXd membraneStrain = strainAtNodes.row(n);
+                    VectorXd membraneStress = stressAtNodes.row(n);
+                    mesh.nodeArray()[nodeList(n)]->setMembraneStrainAndStress(membraneStrain, membraneStress);
+                }
+            }
+            else if (numNodes == 6)
+            {   // interface element
+                // no Gaussian integration for interface element, so directly compute the stress
+                VectorXd deltaDisp = curr->BMatrix(Vector2d::Zero()) * nodeDisp; // delta_u = B * u, 6x12 * 12x1 --> 6x1
+                VectorXd stress =  curr->EMatrix(Vector2d::Zero()) * deltaDisp; // stress = E * delta_u, 6x1
+                MatrixXd stressAtNodes(3, 2); 
+                stressAtNodes << stress(0), stress(1),
+                                 stress(2), stress(3),
+                                 stress(4), stress(5);
+                // raw stress vector is [shear0, normal0, shear1, normal1, shear2, normal2]
+                for (int n = 0; n < numNodes; n++) {
+                    VectorXd interfaceStress = stressAtNodes.row(n % 3); // replicate to node 3,4,5 as 0,1,2
+                    mesh.nodeArray()[nodeList(n)]->setInterfaceStress(interfaceStress);
+                }
+            }
         }
-
     }
 
 }
@@ -368,6 +431,9 @@ void Analysis::averageStrainAndStress()
         mesh.nodeArray()[i]->setDisp(nodalDisp(2 * i), nodalDisp(2 * i + 1));
         nodalStrain.row(i) = mesh.nodeArray()[i]->averageStrain().transpose();
         nodalStress.row(i) = mesh.nodeArray()[i]->averageStress().transpose();
+        nodalMembraneStrain.row(i) = mesh.nodeArray()[i]->averageMembraneStrain().transpose();
+        nodalMembraneStress.row(i) = mesh.nodeArray()[i]->averageMembraneStress().transpose();
+        nodalInterfaceStress.row(i) = mesh.nodeArray()[i]->averageInterfaceStress().transpose();
     }
 }
 
@@ -522,6 +588,8 @@ void Analysis::writeToFile(std::string const & fileName) const
 
 void Analysis::writeToVTK(std::string const & fileName) const
 {
+    // VTK user guide: https://www.kitware.com/products/books/VTKUsersGuide.pdf
+    // VTK file format: https://vtk.org/wp-content/uploads/2015/04/file-formats.pdf
     std::ofstream file(fileName);
 
     file << "# vtk DataFile Version 2.0\n";
@@ -536,25 +604,62 @@ void Analysis::writeToVTK(std::string const & fileName) const
 
     file << "\n";
 
-    file << "CELLS " << mesh.elementCount() << " " << (8 + 1) * mesh.elementCount() << "\n";
+    int nodeListLength = 0;
+    for (int i = 0; i < mesh.elementCount(); i++)
+        nodeListLength += mesh.elementArray()[i]->getSize();
+
+    // B3 element: Quadratic_Edge (cell type 21) in VTK. Note the VTK index order is 0 -- 2 -- 1
+    // I6 element: Polygon (cell type 7) in VTK. Note the VTK index order is 0 -- 1 -- N
+    // Q8 element: Quadratic_Quad (cell type 23) in VTK
+    file << "CELLS " << mesh.elementCount() << " " << mesh.elementCount() + nodeListLength << "\n";
+    int size = 0;
     for (int i = 0; i < mesh.elementCount(); i++){
-        file << 8 << " " << mesh.elementArray()[i]->getNodeList().transpose() << "\n";
+        size = mesh.elementArray()[i]->getSize();
+        VectorXi nodeList = mesh.elementArray()[i]->getNodeList();
+        switch (size) {
+            case 3 :
+                file << size << " " << nodeList(0) << " " << nodeList(2) << " " << nodeList(1) << "\n"; 
+                break;
+            case 6 :
+                file << size << " " << nodeList(0) << " " << nodeList(1) << " " << nodeList(2) << " " << nodeList(5) << " " << nodeList(4) << " " << nodeList(3) << "\n";
+                break;
+            case 8 :
+                file << size << " " << nodeList.transpose() << "\n";
+                break;
+        }
     }
 
     file << "\n";
 
     file << "CELL_TYPES " << mesh.elementCount() << "\n";
     for (int i = 0; i < mesh.elementCount(); i++){
-        file << 23 << "\n"; // quadrilateral
+        size = mesh.elementArray()[i]->getSize();
+        switch (size) {
+            case 3 :
+                file << 21 << "\n"; // edge
+                break;
+            case 6 :
+                file << 7 << "\n"; // polygon
+                break;
+            case 8 :
+                file << 23 << "\n"; // quadrilateral
+                break;
+        }   
     }
 
     file << "\n";
 
     file << "POINT_DATA " << mesh.nodeCount() << "\n";
-    // file << "VECTORS " << " Displacement" << " double" << "\n";
-    // for (int i = 0; i < nodalDisp.size() / 2; i++){
-    //     file << (double)nodalDisp(2 * i) << " " << (double)nodalDisp(2 * i + 1) << " " << 0 << "\n";
-    // }
+
+    file << "SCALARS " << "Coordinate_R " << "double " << "1" << "\n";
+    file << "LOOKUP_TABLE " << "default" << "\n";
+    for (int i = 0; i < mesh.nodeCount(); i++)
+        file << (mesh.nodeArray()[i]->getGlobalCoord())(0)<< "\n";
+
+    file << "SCALARS " << "Coordinate_Z " << "double " << "1" << "\n";
+    file << "LOOKUP_TABLE " << "default" << "\n";
+    for (int i = 0; i < mesh.nodeCount(); i++)
+        file << (mesh.nodeArray()[i]->getGlobalCoord())(1)<< "\n";
 
     file << "SCALARS " << "Displacement_R " << "double " << "1" << "\n";
     file << "LOOKUP_TABLE " << "default" << "\n";
@@ -588,15 +693,55 @@ void Analysis::writeToVTK(std::string const & fileName) const
     for (int i = 0; i < mesh.nodeCount(); i++)
         file << - nodalStress(i, 3) << "\n";
 
-    file << "SCALARS " << "Radial_Distance " << "double " << "1" << "\n";
+    file << "SCALARS " << "Strain_R " << "double " << "1" << "\n";
     file << "LOOKUP_TABLE " << "default" << "\n";
     for (int i = 0; i < mesh.nodeCount(); i++)
-        file << (mesh.nodeArray()[i]->getGlobalCoord())(0)<< "\n";
+        file << - nodalStrain(i, 0) << "\n";
 
-    file << "SCALARS " << "Depth " << "double " << "1" << "\n";
+    file << "SCALARS " << "Strain_Theta " << "double " << "1" << "\n";
     file << "LOOKUP_TABLE " << "default" << "\n";
     for (int i = 0; i < mesh.nodeCount(); i++)
-        file << (mesh.nodeArray()[i]->getGlobalCoord())(1)<< "\n";
+        file << - nodalStrain(i, 1) << "\n";
+
+    file << "SCALARS " << "Strain_Z " << "double " << "1" << "\n";
+    file << "LOOKUP_TABLE " << "default" << "\n";
+    for (int i = 0; i < mesh.nodeCount(); i++)
+        file << - nodalStrain(i, 2) << "\n";
+
+    file << "SCALARS " << "Strain_Shear " << "double " << "1" << "\n";
+    file << "LOOKUP_TABLE " << "default" << "\n";
+    for (int i = 0; i < mesh.nodeCount(); i++)
+        file << - nodalStrain(i, 3) << "\n";
+
+    file << "SCALARS " << "Membrane_Stress_Axial " << "double " << "1" << "\n";
+    file << "LOOKUP_TABLE " << "default" << "\n";
+    for (int i = 0; i < mesh.nodeCount(); i++)
+        file << - nodalMembraneStress(i, 0) << "\n";
+
+    file << "SCALARS " << "Membrane_Stress_Hoop " << "double " << "1" << "\n";
+    file << "LOOKUP_TABLE " << "default" << "\n";
+    for (int i = 0; i < mesh.nodeCount(); i++)
+        file << - nodalMembraneStress(i, 1) << "\n";
+
+    file << "SCALARS " << "Membrane_Strain_Axial " << "double " << "1" << "\n";
+    file << "LOOKUP_TABLE " << "default" << "\n";
+    for (int i = 0; i < mesh.nodeCount(); i++)
+        file << - nodalMembraneStrain(i, 0) << "\n";
+
+    file << "SCALARS " << "Membrane_Strain_Hoop " << "double " << "1" << "\n";
+    file << "LOOKUP_TABLE " << "default" << "\n";
+    for (int i = 0; i < mesh.nodeCount(); i++)
+        file << - nodalMembraneStrain(i, 1) << "\n";
+
+    file << "SCALARS " << "Interface_Stress_Shear " << "double " << "1" << "\n";
+    file << "LOOKUP_TABLE " << "default" << "\n";
+    for (int i = 0; i < mesh.nodeCount(); i++)
+        file << - nodalInterfaceStress(i, 0) << "\n";
+
+    file << "SCALARS " << "Interface_Stress_Normal " << "double " << "1" << "\n";
+    file << "LOOKUP_TABLE " << "default" << "\n";
+    for (int i = 0; i < mesh.nodeCount(); i++)
+        file << - nodalInterfaceStress(i, 1) << "\n";
 
     file.close();
 }

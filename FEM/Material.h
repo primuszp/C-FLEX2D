@@ -20,15 +20,18 @@ class Material
 {
   public:
 
+    Material();
+    
     /**
      * Custom constructor to create an element material.
      *
      * @param anisotropy A sign for material isotropy. 0 if isotropic, 1 if cross-anisotropic.
      * @param nonlinearity A sign for material linearity. 0 if linear elastic, 1 if nonlinear elastic.
      * @param noTension A sign for no-tension modification. 0 if normal material, 1 if no-tension modification required material (unbound aggregate).
+     * @param geosynthetic A sign for geosynthetic material. 0 if normal material, 1 if geosynthetic material.
      * @param properties A list of the material property parameters.
      */
-    Material(const bool & anisotropy, const bool & nonlinearity, const bool & noTension);
+    Material(const bool & anisotropy, const bool & nonlinearity, const bool & noTension, const bool & geosynthetic);
 
     /**
      * Destructor.
@@ -105,6 +108,18 @@ class Material
     const VectorXd & thermalStrain() const;
 
     /**
+     * Get ks to be used in I6 element.
+     * @note override in Geosynthetic derived class only
+     */
+    virtual double getInterfaceShearStiffness() const;
+
+    /**
+     * Get kn to be used in I6 element.
+     * @note override in Geosynthetic derived class only
+     */
+    virtual double getInterfaceNormalStiffness() const;
+
+    /**
      * Assign the thermal strain to allow incremental loading in nonlinear scheme.
      *
      * @param thermalStrain The incremental thermal strain to be assigned.
@@ -119,6 +134,9 @@ class Material
 
     /** A sign for material no-tension modification. 0 if not needed, 1 if needed. */
     bool noTension;
+
+    /** A sign for geosynthetic material. 0 if not geosynthetic (default for all non-geo material), 1 if geosynthetic (initialized specifically in Geosynthetic class). */
+    bool geosynthetic;    
 
   protected:
 

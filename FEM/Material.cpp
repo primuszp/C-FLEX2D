@@ -8,8 +8,12 @@
 
 #include "Material.h"
 
-Material::Material(const bool & Anisotropy, const bool & Nonlinearity, const bool & NoTension)
-  : anisotropy(Anisotropy), nonlinearity(Nonlinearity), noTension(NoTension), E_(MatrixXd::Zero(4,4)), thermalStrain_(VectorXd::Zero(4))
+Material::Material()
+{
+}
+
+Material::Material(const bool & Anisotropy, const bool & Nonlinearity, const bool & NoTension, const bool & Geosynthetic)
+  : anisotropy(Anisotropy), nonlinearity(Nonlinearity), noTension(NoTension), geosynthetic(Geosynthetic), E_(MatrixXd::Zero(4,4)), thermalStrain_(VectorXd::Zero(4))
 {
 }
 
@@ -78,4 +82,14 @@ const VectorXd & Material::thermalStrain() const
 void Material::setThermalStrain(const VectorXd & thermalStrain)
 {
     thermalStrain_ = thermalStrain;
+}
+
+double Material::getInterfaceShearStiffness() const
+{
+    return 0;
+}
+
+double Material::getInterfaceNormalStiffness() const
+{
+    return 0;
 }

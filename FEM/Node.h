@@ -88,6 +88,32 @@ class Node
         void setStrainAndStress(const VectorXd & strain, const VectorXd & stress);
 
         /**
+         * Cumulate the membrane stress and strain values at this node by summing up
+         * the values from each adjacent element.
+         *
+         * @param strain The membrane strain vector to be added to this node. The form is:
+         * [e(s), e(theta)].
+         * @param stress The membrane stress vector to be added to this node. The form is:
+         * [s(s), s(theta)].
+         *
+         * @note This is an internal step for computing the averaged strain and
+         * stress at each node. The cumulative value will be averaged later.
+         */
+        void setMembraneStrainAndStress(const VectorXd & strain, const VectorXd & stress);
+
+        /**
+         * Cumulate the interface stress values at this node by summing up
+         * the values from each adjacent element.
+         *
+         * @param stress The stress vector to be added to this node. The form is:
+         * [s(shear), s(normal)].
+         *
+         * @note This is an internal step for computing the averaged strain and
+         * stress at each node. The cumulative value will be averaged later.
+         */
+        void setInterfaceStress(const VectorXd & stress);
+
+        /**
          * Average the strain vector at this node.
          *
          * @return The average strain vector.
@@ -103,6 +129,27 @@ class Node
          * @return The average stress vector.
          */
         const VectorXd & averageStress();
+
+        /**
+         * Average the membrane strain vector at this node.
+         *
+         * @return The average strain vector.
+         */
+        const VectorXd & averageMembraneStrain();
+
+        /**
+         * Average the membrane stress vector at this node.
+         *
+         * @return The average stress vector.
+         */
+        const VectorXd & averageMembraneStress();
+
+        /**
+         * Average the interface stress vector at this node.
+         *
+         * @return The average stress vector.
+         */
+        const VectorXd & averageInterfaceStress();
 
         /**
          * Get the index of this node.
@@ -148,11 +195,26 @@ class Node
         /** Strain vector [e(r), e(theta), e(z), gamma(rz)] */
         VectorXd strain_;
 
-        /** Strain vector [s(r), s(theta), s(z), t(rz)] */
+        /** Stress vector [s(r), s(theta), s(z), t(rz)] */
         VectorXd stress_;
 
         /** Number of adjacent elements at this node */
         int averageCount_;
+
+        /** Strain vector [e(s), e(theta)] */
+        VectorXd membraneStrain_;
+
+        /** Stress vector [s(s), s(theta)] */
+        VectorXd membraneStress_;
+
+        /** Number of adjacent membrane elements at this node */
+        int averageMembraneCount_;
+
+        /** Stress vector [s(s), s(theta)] */
+        VectorXd interfaceStress_;
+
+        /** Number of adjacent interface elements at this node */
+        int averageInterfaceCount_;
 
         /**
          * Private helper function for deleting the current node, used in destructor

@@ -8,8 +8,8 @@
 
 #include "ViscoElastic.h"
 
-ViscoElastic::ViscoElastic(const bool & anisotropy, const bool & nonlinearity, const bool & noTension, const std::vector<double> & properties)
-  : Material(anisotropy, nonlinearity, noTension)
+ViscoElastic::ViscoElastic(const bool & anisotropy, const bool & nonlinearity, const bool & noTension, const bool & geosynthetic, const std::vector<double> & properties)
+  : Material(anisotropy, nonlinearity, noTension, geosynthetic)
 {
     int i = 0;
 

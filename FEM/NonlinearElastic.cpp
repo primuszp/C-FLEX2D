@@ -9,8 +9,8 @@
 #include "NonlinearElastic.h"
 #include <cmath>
 #include <iostream>
-NonlinearElastic::NonlinearElastic(const bool & anisotropy, const bool & nonlinearity, const bool & noTension, const std::vector<double> & properties, const int & model, const std::vector<double> & parameters)
-  : Material(anisotropy, nonlinearity, noTension), modelNo(model), coeff(parameters)
+NonlinearElastic::NonlinearElastic(const bool & anisotropy, const bool & nonlinearity, const bool & noTension, const bool & geosynthetic, const std::vector<double> & properties, const int & model, const std::vector<double> & parameters)
+  : Material(anisotropy, nonlinearity, noTension, geosynthetic), modelNo(model), coeff(parameters)
 {
     // Just copy from LinearElastic constructor
     int i = 0;

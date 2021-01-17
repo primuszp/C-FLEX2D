@@ -8,8 +8,8 @@
 
 #include "LinearElastic.h"
 
-LinearElastic::LinearElastic(const bool & anisotropy, const bool & nonlinearity, const bool & noTension, const std::vector<double> & properties)
-  : Material(anisotropy, nonlinearity, noTension)
+LinearElastic::LinearElastic(const bool & anisotropy, const bool & nonlinearity, const bool & noTension, const bool & geosynthetic, const std::vector<double> & properties)
+  : Material(anisotropy, nonlinearity, noTension, geosynthetic)
 {
     // For linear elastic problem, just store a constant E matrix is sufficient, so initialize it in constructor
     int i = 0;
